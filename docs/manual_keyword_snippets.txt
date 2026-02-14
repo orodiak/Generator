@@ -1,0 +1,66 @@
+Page 2 | \bFM\b | Signal Generator \nAM/FM/TM \nSMYOl
+---
+Page 11 | \bLEVEL\b | if the option has been fitted. \nFurther details can be found in the sections “Level“ and “Pulse Modulation“ as well as in the data sheet. \nFitting or disassembling option SMY-B40 is only possible at the factory or at authorized service centers.
+---
+Page 13 | \bRF\b | in sections “Store-Recall”, “Sequence” and “Sweep”. \nRF and AF display 2.1 Front and Rear Views \nLevel display Display of the modulation
+---
+Page 13 | \bLEVEL\b | RF and AF display 2.1 Front and Rear Views \nLevel display Display of the modulation \ndepth and deviation BNC input for external
+---
+Page 13 | ERRORS? | cial function is set or \nif an error was detected. \nFurther information in Further information in
+---
+Page 13 | \bAF\b | BNC output of the \nAF sbnal. Further \ninformation in sec-
+---
+Page 13 | \bAF\b | information in sec- \ntion “Internal AF Mod- \nulation Frequency/‘.
+---
+Page 14 | \bLEVEL\b | settings. A short to ground has the same BNC input for blanking \nthe level. Further infw- \neffect as pressing the SEQ key. Further
+---
+Page 14 | \bRF\b | Cut-out provided for fitting the front panel \nRF output to the rear panel of the unit. \n1062.5502.11 2.3 E-4
+---
+Page 16 | \bLEVEL\b | Switching the parameters on and off \nParameters which can be switched on and off are AM, FM, (PM, AF, LEVEL. \nThe parameters are switched on by pressing the parameter key and then one of the three ON keys
+---
+Page 16 | \bRF\b | I Example I Input \nSetting the RF to \n1 MHz MHZ
+---
+Page 100 | ERRORS? | immediately detected and reported in \nthe form of error messages. The user \nthus has an effective protection against
+---
+Page 100 | \bLEVEL\b | calibration values for frequency and \nlevel may be entered and stored at any \ntime without opening the instrument.
+---
+Page 101 | \bLEVEL\b | FRXj”t?“CY \nLevel (EMF, sinewave) \nSource impedance
+---
+Page 101 | \bLEVEL\b | Frequency \nInput level \nInput impedance
+---
+Page 101 | \bFM\b | 2 GHz \nResidual FM, rms, ~1% of \nmaximum deviation, f = 1 GHz
+---
+Page 101 | \bFM\b | 0.3 to 3 ktiz (CCITT) \n0.03 to 20 kHz any combination of AM, FM (pM) and \npulse modulation
+---
+Page 101 | \bLEVEL\b | Residual AM, rms (0.03 to 20 kHz)” ~0.02% \nlevel \nRange
+---
+Page 101 | ERRORS? | Resolution \nTotal error for levels >-127dBm ‘1 \nf<l.O4GHz
+---
+Page 101 | \bLEVEL\b | f>l.O4GHz \nLevel flatness at 0 dBm ‘1 \nOutput impedance
+---
+Page 101 | \bLEVEL\b | Setting time (IEC/IEEE bus) \nNon-interrupting level setting \n(ATTENUATOR MODE FIXED)
+---
+Page 101 | \bRF\b | Overload protection \nMax RF power \nSMYOl
+---
+Page 101 | \bLEVEL\b | ~25 ms (~10 ms with electronic \nlevel setting) \n0 to -20 dEi
+---
+Page 101 | \bRF\b | protects the instrument against exter- \nnally applied (50.~1 source) RF power \nand DC voltage
+---
+Page 101 | ERRORS? | Resolution \nSetting error at 1 kHz (m <80%)‘) \nA”: d;p;&; at 1 kHz’)
+---
+Page 101 | \bAF\b | Incidental cpM with AM (30%], \nAF = 1 kHz \nModulation input (AM EXTJ
+---
+Page 101 | \bAF\b | Resolution \nSetting error at AF = 1 kHz \nFM distortion at AF = 1 kHz
+---
+Page 101 | \bFM\b | Setting error at AF = 1 kHz \nFM distortion at AF = 1 kHz \nand 3 % of maximum deviation
+---
+Page 101 | \bAF\b | 10 Hz (DC] to 2 MHz \nlncldental AM at AF = 1 kHz, \nf > 1 MHz, 40 kHz deviation
+---
+Page 101 | \bAF\b | Stereo modulation at 40 kHz \ndeviation, AF = 1 kHz \nStereo separation’)
+---
+Page 101 | \bFM\b | Carrier frequency offset \nwith FM-DC41 \nModulation input
+---
+Page 101 | \bFM\b | < 1 Hz + 0.1% of deviation \nFM/(pM EXT \n100 kn: 600 Q jumper-selected
+---
+Page 101 | \bAF\b | high/low indication for \nAF=lOHztolOOkHz) \nSignal Generators SMY 5
+---

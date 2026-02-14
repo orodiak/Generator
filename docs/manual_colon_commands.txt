@@ -1,0 +1,33 @@
+COMMAND: 14:
+  Page 100: j “14: !. 1 I ,!.
+
+COMMAND: CAUTION:
+  Page 9: Caution: When mounting into the rack, ensure unhindered admission of air at the perforation of the
+
+COMMAND: EQUATION:
+  Page 10: D/A converter (DAC) according to the following equation:
+
+COMMAND: FUSE:
+  Page 9: Adaption of the power supply, exchange of the power fuse:
+
+COMMAND: H:
+  Page 13: & ROHDEBSCHWARZ 1 SIGNALGENERATOR 9 &iiz,..2>.1 r.%H: : 1~&302.12~
+
+COMMAND: KN:
+  Page 101: 100 kn: 600 Q jumper-selected
+
+COMMAND: NO.:
+  Page 7: CC Certificate No.: 9502291
+
+COMMAND: RIGHT:
+  Page 100: the left to the right: parameters, data,
+
+COMMAND: STANDARDS:
+  Page 7: Conformity is proven by compliance with the following standards:
+
+COMMAND: THAT:
+  Page 7: This is to certify that:
+
+COMMAND: UNIT:
+  Page 16: A value is entered in the order Parameter - Data - Unit:
+

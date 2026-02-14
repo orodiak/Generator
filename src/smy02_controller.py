@@ -32,6 +32,8 @@ class SMY02Controller:
         self.instrument = None
         self.idn = ""
         self.model = ""
+        self._fm_initialized = False
+        self._modulation_mode = None
         self.rm = pyvisa.ResourceManager()
         self._io_lock = threading.RLock()
 
@@ -69,6 +71,8 @@ class SMY02Controller:
                 self.instrument.close()
                 logger.info("Disconnected from device")
                 self.instrument = None
+                self._fm_initialized = False
+                self._modulation_mode = None
 
     def set_frequency(self, frequency: float) -> bool:
         """
@@ -84,33 +88,27 @@ class SMY02Controller:
             return False
         
         with self._io_lock:
-            # Clear any previous errors
-            try:
-                self.clear_status()
-            except Exception:
-                pass
-            
-            sleep(0.1)
-            
-            # Only use the vendor-specific RF command that works reliably
             cmd = f"RF {int(frequency)}"
+            is_smy02 = "SMY02" in (self.model or "").upper() or "SMY02" in (self.idn or "").upper()
             
             try:
                 logger.debug(f"Setting frequency with: {cmd}")
                 self.instrument.write(cmd)
-                sleep(0.2)
-                
-                # Check for errors using non-blocking ESR (do NOT use blocking queries)
+                sleep(0.05 if is_smy02 else 0.2)
+                if is_smy02:
+                    # SMY02 can raise transient panel errors if ESR is queried for every RF change.
+                    # Use write-only path for stable hopping/sweeps.
+                    logger.info(f"Frequency set to {frequency} Hz")
+                    return True
+
+                # Non-SMY02 fallback: keep ESR safety check.
                 esr = self.get_esr()
                 logger.debug(f"*ESR? after RF command: {esr}")
-                
-                # Accept if ESR is 0 (no error) - do NOT attempt readback queries
                 if esr is not None and esr == 0:
                     logger.info(f"Frequency set to {frequency} Hz")
                     return True
-                else:
-                    logger.error(f"Frequency set failed. ESR: {esr}")
-                    return False
+                logger.error(f"Frequency set failed. ESR: {esr}")
+                return False
             except Exception as e:
                 logger.error(f"Failed to set frequency: {e}")
                 return False
@@ -129,33 +127,24 @@ class SMY02Controller:
             return False
         
         with self._io_lock:
-            # Clear any previous errors
-            try:
-                self.clear_status()
-            except Exception:
-                pass
-            
-            sleep(0.1)
-            
-            # Only use the vendor-specific LEVEL command that works reliably
             cmd = f"LEVEL {amplitude}"
+            is_smy02 = "SMY02" in (self.model or "").upper() or "SMY02" in (self.idn or "").upper()
             
             try:
                 logger.debug(f"Setting amplitude with: {cmd}")
                 self.instrument.write(cmd)
-                sleep(0.2)
-                
-                # Check for errors using non-blocking ESR (do NOT use blocking queries)
+                sleep(0.05 if is_smy02 else 0.2)
+                if is_smy02:
+                    logger.info(f"Amplitude set to {amplitude} dBm")
+                    return True
+
                 esr = self.get_esr()
                 logger.debug(f"*ESR? after LEVEL command: {esr}")
-                
-                # Accept if ESR is 0 (no error) - do NOT attempt readback queries
                 if esr is not None and esr == 0:
                     logger.info(f"Amplitude set to {amplitude} dBm")
                     return True
-                else:
-                    logger.error(f"Amplitude set failed. ESR: {esr}")
-                    return False
+                logger.error(f"Amplitude set failed. ESR: {esr}")
+                return False
             except Exception as e:
                 logger.error(f"Failed to set amplitude: {e}")
                 return False
@@ -172,8 +161,10 @@ class SMY02Controller:
         
         with self._io_lock:
             try:
-                # Try several command variants because SMY02 firmware differs.
-                candidates = ["OUTP ON", "OUTP:STAT ON", "OUTPON", "LEVEL:ON", "RF:ON"]
+                is_smy02 = "SMY02" in (self.model or "").upper() or "SMY02" in (self.idn or "").upper()
+                # For SMY02 prefer strict vendor command only, to avoid generating
+                # extra command errors from unsupported SCPI aliases.
+                candidates = ["OUTP ON"] if is_smy02 else ["OUTP ON", "OUTP:STAT ON", "OUTPON", "LEVEL:ON", "RF:ON"]
                 last_esr = None
                 for cmd in candidates:
                     self.clear_status()
@@ -187,11 +178,19 @@ class SMY02Controller:
                     if esr is None or esr == 0:
                         logger.info("RF output enabled")
                         return True
+                    # On some SMY02 firmware revisions OUTP ON can report command/status
+                    # bits despite RF path being enabled; avoid retrying invalid aliases.
+                    if is_smy02 and esr in (32, 53):
+                        logger.warning("Enable output returned ESR=%s on SMY02; treating as non-fatal", esr)
+                        return True
 
                 # Some SMY02 configurations report command error (ESR=32) for OUTP
                 # while still allowing RF via level/modulation path.
-                if last_esr == 32:
-                    logger.warning("Enable output command reported ESR=32; continuing as non-fatal for SMY02 compatibility")
+                if last_esr in (32, 53):
+                    logger.warning(
+                        "Enable output command reported ESR=%s; continuing as non-fatal for SMY02 compatibility",
+                        last_esr,
+                    )
                     return True
 
                 logger.error(f"Enable output failed. ESR: {last_esr}")
@@ -242,22 +241,47 @@ class SMY02Controller:
         
         with self._io_lock:
             try:
+                is_smy02 = "SMY02" in (self.model or "").upper() or "SMY02" in (self.idn or "").upper()
+                if is_smy02:
+                    # Keep command set minimal on SMY02 to avoid front-panel ERR spam.
+                    # Initialize tone source once; during hopping only deviation is updated.
+                    try:
+                        if not self._fm_initialized:
+                            for cmd in ["FM:INT 1.000E+3", "AF 1000", "FM:ON"]:
+                                logger.debug(f"Sending (init FM): {cmd}")
+                                self.instrument.write(cmd)
+                                sleep(0.06)
+                            self._fm_initialized = True
+                        elif self._modulation_mode != "FM":
+                            # Ensure we actually switch back from AM to FM.
+                            for cmd in ["AM:OFF", "FM:ON"]:
+                                logger.debug(f"Sending (switch to FM): {cmd}")
+                                self.instrument.write(cmd)
+                                sleep(0.05)
+                        cmd = f"FM {int(deviation)}"
+                        logger.debug(f"Sending (SMY02 deviation): {cmd}")
+                        self.instrument.write(cmd)
+                        sleep(0.06)
+                        self._modulation_mode = "FM"
+                        logger.info(f"FM deviation set to {deviation} Hz via '{cmd}'")
+                        return True
+                    except Exception as e:
+                        logger.error(f"Failed SMY02 FM set: {e}")
+                        return False
+
+                # Non-SMY02 fallback with ESR probing.
                 self.clear_status()
                 sleep(0.1)
-                
-                # Set tone first
                 for cmd in ["FM:INT 1.000E+3", "AF 1000"]:
                     logger.debug(f"Sending: {cmd}")
                     self.instrument.write(cmd)
                     sleep(0.15)
-                
-                # Try multiple deviation command variants (SMY02 firmware can vary)
                 deviation_cmds = [
+                    f"FM {int(deviation)}",
                     f"FM:DEV {int(deviation)}",
                     f"FM:DEV {float(deviation):.3E}",
                     f"FM:DEVIATION {int(deviation)}",
                     f"FM:INT:DEV {int(deviation)}",
-                    f"FM {int(deviation)}",
                 ]
                 deviation_set = False
                 for cmd in deviation_cmds:
@@ -274,19 +298,55 @@ class SMY02Controller:
                             break
                     except Exception:
                         continue
-                
+
                 if not deviation_set:
                     logger.warning(
                         "Could not verify FM deviation command for %s Hz; bandwidth may remain unchanged.",
                         deviation
                     )
-                
+
                 self.instrument.write("FM:ON")
                 sleep(0.15)
+                self._modulation_mode = "FM"
                 logger.info("FM modulation enabled")
                 return True
             except Exception as e:
                 logger.error(f"Failed to set modulation: {e}")
+                return False
+
+    def set_modulation_am(self) -> bool:
+        """
+        Enable AM modulation mode.
+
+        For SMY02 this uses a minimal command path to reduce panel errors.
+        """
+        if not self.instrument:
+            return False
+
+        with self._io_lock:
+            try:
+                is_smy02 = "SMY02" in (self.model or "").upper() or "SMY02" in (self.idn or "").upper()
+                if is_smy02:
+                    for cmd in ["FM:OFF", "AM:ON"]:
+                        logger.debug(f"Sending (SMY02 AM): {cmd}")
+                        self.instrument.write(cmd)
+                        sleep(0.06)
+                    self._modulation_mode = "AM"
+                    logger.info("AM modulation enabled")
+                    return True
+
+                # Generic fallback variants for non-SMY02.
+                for cmd in ["FM:OFF", "AM:ON", "AM ON", "AM:STAT ON"]:
+                    try:
+                        self.instrument.write(cmd)
+                        sleep(0.08)
+                    except Exception:
+                        continue
+                self._modulation_mode = "AM"
+                logger.info("AM modulation enabled")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to set AM modulation: {e}")
                 return False
 
     def set_lfo_frequency(self, frequency: float) -> bool:

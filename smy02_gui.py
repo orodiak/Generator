@@ -18,6 +18,7 @@ import json
 import csv
 import os
 import sys
+import copy
 from pathlib import Path
 import logging
 
@@ -57,8 +58,12 @@ class SMY02GUI:
         self.current_preset = None
         self.playlist = []
         self.current_playlist_index = 0
+        self.active_hop_playlist = None
         self.state_refresh_in_progress = False
         self.state_refresh_job = None
+        self.auto_follow_hop_var = tk.BooleanVar(value=True)
+        self.highlight_hop_in_list_var = tk.BooleanVar(value=False)
+        self.sync_controls_with_hop_var = tk.BooleanVar(value=False)
         
         self._create_widgets()
         self._load_presets()
@@ -180,6 +185,75 @@ class SMY02GUI:
         ttk.Button(bottom_row, text="Export CSV", command=self._export_playlist_csv).pack(side=tk.LEFT, padx=5)
         ttk.Button(bottom_row, text="Save Playlist", command=self._save_playlist_json).pack(side=tk.LEFT, padx=5)
         ttk.Button(bottom_row, text="Load Playlist", command=self._load_playlist_json).pack(side=tk.LEFT, padx=5)
+        ttk.Checkbutton(
+            bottom_row,
+            text="Auto-scroll to current hop",
+            variable=self.auto_follow_hop_var,
+        ).pack(side=tk.LEFT, padx=8)
+        ttk.Checkbutton(
+            bottom_row,
+            text="Highlight current in list",
+            variable=self.highlight_hop_in_list_var,
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Checkbutton(
+            bottom_row,
+            text="Sync controls with hop",
+            variable=self.sync_controls_with_hop_var,
+        ).pack(side=tk.LEFT, padx=4)
+
+        # Sweep generator controls
+        sweep_frame = ttk.LabelFrame(playlist_frame, text="Sweep Generator", padding=8)
+        sweep_frame.pack(fill=tk.X, pady=5)
+
+        ttk.Label(sweep_frame, text="Start MHz:").grid(row=0, column=0, padx=4, pady=3, sticky=tk.W)
+        self.sweep_start_var = tk.DoubleVar(value=108.0)
+        ttk.Entry(sweep_frame, textvariable=self.sweep_start_var, width=9).grid(row=0, column=1, padx=4, pady=3)
+
+        ttk.Label(sweep_frame, text="Stop MHz:").grid(row=0, column=2, padx=4, pady=3, sticky=tk.W)
+        self.sweep_stop_var = tk.DoubleVar(value=155.0)
+        ttk.Entry(sweep_frame, textvariable=self.sweep_stop_var, width=9).grid(row=0, column=3, padx=4, pady=3)
+
+        ttk.Label(sweep_frame, text="Step MHz:").grid(row=0, column=4, padx=4, pady=3, sticky=tk.W)
+        self.sweep_step_var = tk.DoubleVar(value=1.0)
+        ttk.Entry(sweep_frame, textvariable=self.sweep_step_var, width=9).grid(row=0, column=5, padx=4, pady=3)
+
+        ttk.Label(sweep_frame, text="Base Level dBm:").grid(row=1, column=0, padx=4, pady=3, sticky=tk.W)
+        self.sweep_level_base_var = tk.DoubleVar(value=-20.0)
+        ttk.Entry(sweep_frame, textvariable=self.sweep_level_base_var, width=9).grid(row=1, column=1, padx=4, pady=3)
+
+        self.sweep_alt_enable_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            sweep_frame,
+            text="Alternate Level",
+            variable=self.sweep_alt_enable_var
+        ).grid(row=1, column=2, padx=4, pady=3, sticky=tk.W)
+
+        ttk.Label(sweep_frame, text="Alt Level dBm:").grid(row=1, column=3, padx=4, pady=3, sticky=tk.W)
+        self.sweep_level_alt_var = tk.DoubleVar(value=-30.0)
+        ttk.Entry(sweep_frame, textvariable=self.sweep_level_alt_var, width=9).grid(row=1, column=4, padx=4, pady=3)
+
+        ttk.Label(sweep_frame, text="Toggle every N steps:").grid(row=1, column=5, padx=4, pady=3, sticky=tk.W)
+        self.sweep_level_toggle_every_var = tk.IntVar(value=1)
+        ttk.Spinbox(
+            sweep_frame,
+            from_=1,
+            to=1000,
+            textvariable=self.sweep_level_toggle_every_var,
+            width=7,
+        ).grid(row=1, column=6, padx=4, pady=3)
+
+        self.sweep_replace_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            sweep_frame,
+            text="Replace current playlist",
+            variable=self.sweep_replace_var
+        ).grid(row=2, column=0, columnspan=3, padx=4, pady=3, sticky=tk.W)
+
+        ttk.Button(
+            sweep_frame,
+            text="Generate Sweep Playlist",
+            command=self._generate_sweep_playlist
+        ).grid(row=2, column=3, columnspan=2, padx=4, pady=3, sticky=tk.W)
         
         # Playlist display
         list_frame = ttk.Frame(playlist_frame)
@@ -188,13 +262,28 @@ class SMY02GUI:
         scrollbar = ttk.Scrollbar(list_frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.playlist_listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set, height=8)
+        self.playlist_listbox = tk.Listbox(
+            list_frame,
+            yscrollcommand=scrollbar.set,
+            height=8,
+            selectbackground="#FFD400",
+            selectforeground="#000000",
+            activestyle="none",
+            font=("Arial", 11, "bold"),
+        )
         self.playlist_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.playlist_listbox.yview)
         
         # Hop status
         self.hop_status = ttk.Label(playlist_frame, text="Hopping: OFF", foreground="red")
         self.hop_status.pack(fill=tk.X, pady=5)
+        self.current_hop_label = ttk.Label(
+            playlist_frame,
+            text="CURRENT HOP: -",
+            foreground="#B00000",
+            font=("Arial", 13, "bold"),
+        )
+        self.current_hop_label.pack(fill=tk.X, pady=2)
         
     def _connect(self):
         """Connect to SMY02 device."""
@@ -697,6 +786,71 @@ class SMY02GUI:
         if select_idx is not None and 0 <= select_idx < len(self.playlist):
             self.playlist_listbox.selection_set(select_idx)
             self.playlist_listbox.see(select_idx)
+
+    def _generate_sweep_playlist(self):
+        """Generate playlist from start/stop/step controls with optional level alternation."""
+        try:
+            start = float(self.sweep_start_var.get())
+            stop = float(self.sweep_stop_var.get())
+            step = float(self.sweep_step_var.get())
+            base_level = float(self.sweep_level_base_var.get())
+            alt_enabled = bool(self.sweep_alt_enable_var.get())
+            alt_level = float(self.sweep_level_alt_var.get())
+            toggle_every = int(self.sweep_level_toggle_every_var.get())
+
+            if step <= 0:
+                messagebox.showerror("Error", "Step must be > 0")
+                return
+            if toggle_every < 1:
+                messagebox.showerror("Error", "Toggle every N must be >= 1")
+                return
+
+            ascending = stop >= start
+            current = start
+            entries = []
+            idx = 0
+            eps = step / 10.0
+
+            while (current <= stop + eps) if ascending else (current >= stop - eps):
+                if alt_enabled:
+                    block = (idx // toggle_every) % 2
+                    level = alt_level if block == 1 else base_level
+                else:
+                    level = base_level
+
+                freq = round(current, 6)
+                entries.append(
+                    {
+                        "name": f"Sweep {freq} MHz @ {level} dBm",
+                        "frequency": freq,
+                        "level": level,
+                        "bandwidth": self.bw_var.get(),
+                    }
+                )
+                idx += 1
+                current = current + step if ascending else current - step
+
+            if not entries:
+                messagebox.showwarning("Warning", "No sweep entries generated")
+                return
+
+            if self.sweep_replace_var.get():
+                self.playlist = entries
+            else:
+                self.playlist.extend(entries)
+
+            self._refresh_playlist_listbox(select_idx=0 if self.playlist else None)
+            logger.info(
+                "Generated %d sweep entries (%s -> %s MHz, step %s MHz, alt level=%s, every N=%d)",
+                len(entries),
+                start,
+                stop,
+                step,
+                alt_enabled,
+                toggle_every,
+            )
+        except ValueError:
+            messagebox.showerror("Error", "Invalid numeric value in sweep settings")
     
     def _start_hopping(self):
         """Start frequency hopping through playlist."""
@@ -712,6 +866,8 @@ class SMY02GUI:
             messagebox.showwarning("Warning", "Hopping already running")
             return
         
+        # Freeze a snapshot for deterministic hopping sequence.
+        self.active_hop_playlist = copy.deepcopy(self.playlist)
         self.playlist_running = True
         self.current_playlist_index = 0
         self.hop_status.config(text="Hopping: ON", foreground="green")
@@ -726,7 +882,22 @@ class SMY02GUI:
         """Stop frequency hopping."""
         self.playlist_running = False
         self.hop_status.config(text="Hopping: OFF", foreground="red")
+        self.current_hop_label.config(text="CURRENT HOP: -", foreground="#B00000")
         logger.info("Frequency hopping stopped")
+
+    def _update_hop_marker(self, idx, entry):
+        """Update list marker and label to the current hop entry."""
+        if self.highlight_hop_in_list_var.get():
+            self.playlist_listbox.selection_clear(0, tk.END)
+            if 0 <= idx < len(self.playlist):
+                self.playlist_listbox.selection_set(idx)
+                self.playlist_listbox.activate(idx)
+                if self.auto_follow_hop_var.get():
+                    self.playlist_listbox.see(idx)
+        self.current_hop_label.config(
+            text=f"CURRENT HOP: {entry['name']} ({entry['frequency']} MHz)",
+            foreground="#005A00",
+        )
     
     def _hopping_worker(self, dwell_seconds):
         """Worker thread for frequency hopping."""
@@ -734,18 +905,18 @@ class SMY02GUI:
             return
         
         try:
+            hop_playlist = self.active_hop_playlist or []
             rf_enable_failed = False
+            last_bw = None
             while self.playlist_running:
-                if not self.playlist:
+                if not hop_playlist:
                     break
                 
-                entry = self.playlist[self.current_playlist_index]
+                entry = hop_playlist[self.current_playlist_index]
                 
-                # Update GUI
+                # Update GUI marker/label in one place to keep them in sync.
                 idx = self.current_playlist_index
-                self.root.after(0, lambda: self.playlist_listbox.selection_clear(0, tk.END))
-                self.root.after(0, lambda i=idx: self.playlist_listbox.selection_set(i))
-                self.root.after(0, lambda i=idx: self.playlist_listbox.see(i))
+                self.root.after(0, lambda i=idx, e=entry: self._update_hop_marker(i, e))
                 
                 # Set frequency and level
                 freq_hz = int(entry['frequency'] * 1e6)
@@ -757,7 +928,9 @@ class SMY02GUI:
                     self.root.after(0, lambda: messagebox.showerror("Error", f"Failed to set hop level: {entry['level']} dBm"))
                     break
 
-                self._apply_bandwidth(entry['bandwidth'])
+                if entry['bandwidth'] != last_bw:
+                    self._apply_bandwidth(entry['bandwidth'])
+                    last_bw = entry['bandwidth']
 
                 if not self.transmitting and not rf_enable_failed:
                     if not self.controller.enable_output():
@@ -775,17 +948,17 @@ class SMY02GUI:
                         self.root.after(0, lambda: self.tx_button.config(text="Disable RF"))
                         self.root.after(0, lambda: self.tx_status.config(text="RF: ON", foreground="green"))
 
-                self.root.after(0, lambda e=entry: self.freq_var.set(e['frequency']))
-                self.root.after(0, lambda e=entry: self.level_var.set(e['level']))
-                self.root.after(0, lambda e=entry: self.bw_var.set(e['bandwidth']))
-                
+                if self.sync_controls_with_hop_var.get():
+                    self.root.after(0, lambda e=entry: self.freq_var.set(e['frequency']))
+                    self.root.after(0, lambda e=entry: self.level_var.set(e['level']))
+                    self.root.after(0, lambda e=entry: self.bw_var.set(e['bandwidth']))
                 logger.info(f"Hop to: {entry['name']}")
                 
                 # Dwell time
                 sleep(dwell_seconds)
                 
                 # Next frequency
-                self.current_playlist_index = (self.current_playlist_index + 1) % len(self.playlist)
+                self.current_playlist_index = (self.current_playlist_index + 1) % len(hop_playlist)
         
         except Exception as e:
             logger.error(f"Hopping error: {e}")
@@ -793,7 +966,9 @@ class SMY02GUI:
         
         finally:
             self.playlist_running = False
+            self.active_hop_playlist = None
             self.root.after(0, lambda: self.hop_status.config(text="Hopping: OFF", foreground="red"))
+            self.root.after(0, lambda: self.current_hop_label.config(text="CURRENT HOP: -", foreground="#B00000"))
     
     def _update_preset_combo(self):
         """Update preset combobox with current presets."""
